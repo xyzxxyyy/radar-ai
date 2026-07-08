@@ -181,6 +181,12 @@ function setApiHeaders(response) {
   response.setHeader("Access-Control-Allow-Headers", "Content-Type");
 }
 
+function getRequestPath(request) {
+  const rawUrl = request.url || "/";
+  const pathname = new URL(rawUrl, "http://localhost").pathname.replace(/\/+$/, "") || "/";
+  return pathname.startsWith("/api/") ? pathname : `/api${pathname}`;
+}
+
 function sendJson(response, statusCode, body) {
   setApiHeaders(response);
   response.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
@@ -1313,6 +1319,7 @@ async function callDeepSeekAdultAnalysis(payload) {
 
 export async function handleApi(request, response) {
   setApiHeaders(response);
+  const requestPath = getRequestPath(request);
 
   if (request.method === "OPTIONS") {
     response.writeHead(204);
@@ -1320,7 +1327,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/health" && request.method === "GET") {
+  if (requestPath === "/api/health" && request.method === "GET") {
     sendJson(response, 200, {
       ok: true,
       providers: {
@@ -1337,7 +1344,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/analyze" && request.method === "POST") {
+  if (requestPath === "/api/analyze" && request.method === "POST") {
     try {
       const body = await readJsonBody(request);
       const provider = chooseProvider(body.provider);
@@ -1352,7 +1359,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/interview-score" && request.method === "POST") {
+  if (requestPath === "/api/interview-score" && request.method === "POST") {
     try {
       const body = await readJsonBody(request);
       const provider = chooseProvider(body.provider);
@@ -1367,7 +1374,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/adult-analyze" && request.method === "POST") {
+  if (requestPath === "/api/adult-analyze" && request.method === "POST") {
     try {
       const body = await readJsonBody(request);
       const provider = chooseProvider(body.provider);
@@ -1383,7 +1390,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/adult-chat" && request.method === "POST") {
+  if (requestPath === "/api/adult-chat" && request.method === "POST") {
     try {
       const body = await readJsonBody(request);
       const provider = chooseProvider(body.provider);
@@ -1398,7 +1405,7 @@ export async function handleApi(request, response) {
     return;
   }
 
-  if (request.url === "/api/chat" && request.method === "POST") {
+  if (requestPath === "/api/chat" && request.method === "POST") {
     try {
       const body = await readJsonBody(request);
       const provider = chooseProvider(body.provider);
@@ -1447,7 +1454,8 @@ function serveStatic(request, response) {
 }
 
 const server = createServer((request, response) => {
-  if ((request.url || "").startsWith("/api/")) {
+  const requestPath = new URL(request.url || "/", "http://localhost").pathname;
+  if (requestPath.startsWith("/api/")) {
     handleApi(request, response);
     return;
   }
