@@ -244,15 +244,74 @@ function readJsonBody(request) {
   });
 }
 
+function stringifyContentParts(content) {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part;
+        }
+
+        if (typeof part?.text === "string") {
+          return part.text;
+        }
+
+        if (typeof part?.text?.value === "string") {
+          return part.text.value;
+        }
+
+        if (typeof part?.content === "string") {
+          return part.content;
+        }
+
+        if (typeof part?.value === "string") {
+          return part.value;
+        }
+
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+
+  if (typeof content?.text === "string") {
+    return content.text;
+  }
+
+  if (typeof content?.text?.value === "string") {
+    return content.text.value;
+  }
+
+  if (typeof content?.value === "string") {
+    return content.value;
+  }
+
+  return "";
+}
+
 function extractOutputText(data) {
+  if (!data) {
+    return "";
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
   if (typeof data.output_text === "string") {
     return data.output_text;
   }
 
   if (Array.isArray(data.output)) {
     return data.output
-      .flatMap((item) => item.content || [])
-      .map((part) => part.text || part.content || "")
+      .flatMap((item) => item.content || item.message?.content || [])
+      .map((part) => stringifyContentParts(part))
+      .filter(Boolean)
       .join("\n")
       .trim();
   }
@@ -489,7 +548,29 @@ async function callOpenAI(payload) {
 }
 
 function extractChatContent(data) {
-  return data?.choices?.[0]?.message?.content || "";
+  if (!data) {
+    return "";
+  }
+
+  if (typeof data === "string") {
+    return data;
+  }
+
+  const choice = data?.choices?.[0] || {};
+  const direct =
+    stringifyContentParts(choice?.message?.content) ||
+    stringifyContentParts(choice?.delta?.content) ||
+    stringifyContentParts(choice?.text) ||
+    stringifyContentParts(data?.message?.content) ||
+    stringifyContentParts(data?.content) ||
+    stringifyContentParts(data?.reply) ||
+    stringifyContentParts(data?.answer);
+
+  if (direct) {
+    return direct;
+  }
+
+  return extractOutputText(data);
 }
 
 function cleanChatReply(text) {
@@ -497,6 +578,17 @@ function cleanChatReply(text) {
     .replace(/\*\*(.*?)\*\*/gs, "$1")
     .replace(/\*\*/g, "")
     .trim();
+}
+
+function requireAiReply(text, providerName = "AI") {
+  const cleanText = cleanChatReply(text);
+  if (!cleanText) {
+    const error = new Error(`${providerName} 返回内容为空，请检查模型名、中转站返回格式、额度或余额。`);
+    error.statusCode = 502;
+    throw error;
+  }
+
+  return cleanText;
 }
 
 function parseJsonObjectFromText(text) {
@@ -912,7 +1004,7 @@ async function callOpenAIChat(payload) {
   return {
     provider: "openai",
     model,
-    reply: cleanChatReply(extractOutputText(data)),
+    reply: requireAiReply(extractOutputText(data), "OpenAI"),
   };
 }
 
@@ -964,7 +1056,7 @@ async function callOpenAICoachViaChat(payload, apiKey, model, baseUrl, messages,
   return {
     provider: "openai",
     model,
-    reply: cleanChatReply(extractChatContent(data)),
+    reply: requireAiReply(extractChatContent(data), "OpenAI"),
   };
 }
 
@@ -1027,7 +1119,7 @@ async function callDeepSeekChat(payload) {
   return {
     provider: "deepseek",
     model,
-    reply: cleanChatReply(extractChatContent(data)),
+    reply: requireAiReply(extractChatContent(data), "DeepSeek"),
   };
 }
 
@@ -1128,7 +1220,7 @@ async function callOpenAIAdultChat(payload) {
   return {
     provider: "openai",
     model,
-    reply: cleanChatReply(extractChatContent(data)),
+    reply: requireAiReply(extractChatContent(data), "OpenAI"),
   };
 }
 
@@ -1191,7 +1283,7 @@ async function callDeepSeekAdultChat(payload) {
   return {
     provider: "deepseek",
     model,
-    reply: cleanChatReply(extractChatContent(data)),
+    reply: requireAiReply(extractChatContent(data), "DeepSeek"),
   };
 }
 
